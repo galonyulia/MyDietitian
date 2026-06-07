@@ -1,41 +1,28 @@
 import os
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
-import anthropic
+import google.generativeai as genai
 
 app = Flask(__name__)
 
-client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    system_instruction="You are a helpful WhatsApp assistant. Keep replies concise."
+)
 
-# Store conversation history per phone number
-conversations = {}
+# Store chat sessions per phone number
+chats = {}
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     incoming_msg = request.form.get("Body", "").strip()
     from_number = request.form.get("From", "")
 
-    if from_number not in conversations:
-        conversations[from_number] = []
+    if from_number not in chats:
+        chats[from_number] = model.start_chat(history=[])
 
-    conversations[from_number].append({
-        "role": "user",
-        "content": incoming_msg
-    })
-
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1024,
-        system="You are a helpful WhatsApp assistant. Keep replies concise.",
-        messages=conversations[from_number]
-    )
-
-    reply = response.content[0].text
-
-    conversations[from_number].append({
-        "role": "assistant",
-        "content": reply
-    })
+    reply = chats[from_number].send_message(incoming_msg).text
 
     twilio_resp = MessagingResponse()
     twilio_resp.message(reply)
