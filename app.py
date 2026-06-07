@@ -1,12 +1,11 @@
 import os
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
-from google import genai
-from google.genai import types
+from groq import Groq
 
 app = Flask(__name__)
 
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 # Store conversation history per phone number
 conversations = {}
@@ -17,25 +16,20 @@ def whatsapp():
     from_number = request.form.get("From", "")
 
     if from_number not in conversations:
-        conversations[from_number] = []
+        conversations[from_number] = [
+            {"role": "system", "content": "You are a helpful WhatsApp assistant. Keep replies concise."}
+        ]
 
-    conversations[from_number].append(
-        types.Content(role="user", parts=[types.Part(text=incoming_msg)])
+    conversations[from_number].append({"role": "user", "content": incoming_msg})
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=conversations[from_number]
     )
 
-    response = client.models.generate_content(
-        model="gemini-2.0-flash-lite",
-        config=types.GenerateContentConfig(
-            system_instruction="You are a helpful WhatsApp assistant. Keep replies concise."
-        ),
-        contents=conversations[from_number]
-    )
+    reply = response.choices[0].message.content
 
-    reply = response.text
-
-    conversations[from_number].append(
-        types.Content(role="model", parts=[types.Part(text=reply)])
-    )
+    conversations[from_number].append({"role": "assistant", "content": reply})
 
     twilio_resp = MessagingResponse()
     twilio_resp.message(reply)
