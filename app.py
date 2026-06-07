@@ -24,7 +24,7 @@ def whatsapp():
     )
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-2.0-flash-lite",
         config=types.GenerateContentConfig(
             system_instruction="You are a helpful WhatsApp assistant. Keep replies concise."
         ),
@@ -43,4 +43,3 @@ def whatsapp():
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
-    
