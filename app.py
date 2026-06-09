@@ -6,37 +6,48 @@ from groq import Groq
 app = Flask(__name__)
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-# Load dietitian chat history once at startup
-chat_history = ""
-if os.path.exists("dietitian_chat.txt"):
-    with open("dietitian_chat.txt", "r", encoding="utf-8") as f:
-        chat_history = f.read()
+def load_file(filename):
+    if os.path.exists(filename):
+        with open(filename, "r", encoding="utf-8") as f:
+            return f.read()
+    return ""
 
-SYSTEM_PROMPT = f"""You are a personal AI dietitian assistant for Yulia. 
+chat_history = load_file("dietitian_chat.txt")
+meal_plan    = load_file("meal_plan.txt")
 
-You have access to Yulia's full conversation history with her clinical dietitian Hila. 
-Use this history to understand her health background, goals, dietary preferences, restrictions, 
-blood test results, meal plans, and any advice she was given.
+SYSTEM_PROMPT = f"""את עוזרת תזונה אישית של יוליה גלאון. יש לך גישה מלאה לשיחה שלה עם הדיאטנית הקלינית שלה הילה ממן, ולתפריט התזונה האישי שלה.
 
-Always answer in the same language Yulia writes in (Hebrew or English).
-Be warm, personal, and practical. Reference her specific history when relevant.
-If she asks about food tracking, help her log and give feedback.
-If she asks for meal plans, base them on what you know about her preferences and goals.
+פרטים אישיים של יוליה:
+- גובה: 1.57, משקל: 79 ק"ג, גיל: 38
+- אחוזי שומן: 30.2%, היקף בטן: 56.4
+- מטרה: להוריד 10 ק"ג של שומן
+- מתחילה את היום ב-6 בבוקר
+- יש לה ילדים
 
---- DIETITIAN CONVERSATION HISTORY ---
+תפקידך:
+1. לענות על שאלות תזונה בהתבסס על ההיסטוריה וההמלצות של הילה
+2. לעזור למעקב אחרי אכילה יומית ולתת פידבק
+3. להציע ארוחות בהתאם לתפריט שנקבע
+4. לענות תמיד בשפה שבה יוליה כותבת (עברית או אנגלית)
+5. להיות חמה, תומכת ופרקטית
+
+חשוב: את לא מחליפה דיאטנית אמיתית – לשינויים רפואיים יש להפנות להילה.
+
+--- תפריט התזונה האישי ---
+{meal_plan}
+--- סוף תפריט ---
+
+--- היסטוריית השיחה עם הדיאטנית ---
 {chat_history}
---- END OF HISTORY ---
-
-You are not a replacement for a real dietitian — always encourage her to consult Hila for medical decisions.
+--- סוף היסטוריה ---
 """
 
-# Store conversation history per phone number
 conversations = {}
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     incoming_msg = request.form.get("Body", "").strip()
-    from_number = request.form.get("From", "")
+    from_number  = request.form.get("From", "")
 
     if from_number not in conversations:
         conversations[from_number] = []
@@ -44,7 +55,7 @@ def whatsapp():
     conversations[from_number].append({"role": "user", "content": incoming_msg})
 
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="llama3-70b-8192",
         messages=[{"role": "system", "content": SYSTEM_PROMPT}] + conversations[from_number]
     )
 
