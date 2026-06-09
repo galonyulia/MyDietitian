@@ -55,7 +55,7 @@ def whatsapp():
     conversations[from_number].append({"role": "user", "content": incoming_msg})
 
     response = client.chat.completions.create(
-        model="llama3-70b-8192",
+        model="llama-3.3-70b-versatile",
         messages=[{"role": "system", "content": SYSTEM_PROMPT}] + conversations[from_number]
     )
 
