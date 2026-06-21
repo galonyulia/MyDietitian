@@ -12,7 +12,7 @@ from supabase import create_client
 
 app = Flask(__name__)
 
-groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"), max_retries=0, timeout=25.0)
 tavily      = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY"))
 supabase    = create_client(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY"))
 
@@ -203,14 +203,24 @@ def run_agent_turn(phone, messages):
             )
             msg = response.choices[0].message
         except Exception as e:
-            if "tool_use_failed" in str(e):
-                response = groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=messages
-                )
-                msg = response.choices[0].message
+            err = str(e)
+            if "tool_use_failed" in err:
+                # Model botched function-call syntax — retry once without tools
+                try:
+                    response = groq_client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=messages
+                    )
+                    msg = response.choices[0].message
+                except Exception as e2:
+                    print(f"[run_agent_turn] retry-without-tools failed: {e2}")
+                    return "מצאתי קצת קושי לעבד את זה. אפשר לנסות לנסח שוב?"
+            elif "429" in err or "rate_limit" in err.lower():
+                print(f"[run_agent_turn] rate limited: {err}")
+                return "אני קצת עמוסה כרגע (יותר מדי בקשות בדקה). אפשר לנסות שוב בעוד דקה?"
             else:
-                raise
+                print(f"[run_agent_turn] unexpected error: {err}")
+                return "סליחה, הייתה לי תקלה. אפשר לנסות שוב?"
 
         if not msg.tool_calls:
             return msg.content
@@ -223,14 +233,18 @@ def run_agent_turn(phone, messages):
             except Exception:
                 args = {}
 
-            if name == "search_web":
-                result = search_web(args.get("query", ""))
-            elif name == "log_meal":
-                result = tool_log_meal(phone, args)
-            elif name == "get_daily_summary":
-                result = tool_get_daily_summary(phone)
-            else:
-                result = "כלי לא מוכר"
+            try:
+                if name == "search_web":
+                    result = search_web(args.get("query", ""))
+                elif name == "log_meal":
+                    result = tool_log_meal(phone, args)
+                elif name == "get_daily_summary":
+                    result = tool_get_daily_summary(phone)
+                else:
+                    result = "כלי לא מוכר"
+            except Exception as e:
+                print(f"[run_agent_turn] tool {name} failed: {e}")
+                result = f"שגיאה בהרצת הכלי: {e}"
 
             messages.append({
                 "role": "tool",
