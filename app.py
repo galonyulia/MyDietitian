@@ -70,36 +70,52 @@ def whatsapp():
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversations[from_number]
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=messages,
-        tools=TOOLS,
-        tool_choice="auto"
-    )
+    try:
+        try:
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                tools=TOOLS,
+                tool_choice="auto"
+            )
+            msg = response.choices[0].message
+        except Exception as e:
+            if "tool_use_failed" in str(e):
+                response = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=messages
+                )
+                msg = response.choices[0].message
+            else:
+                raise
 
-    msg = response.choices[0].message
+        # If the model wants to search, do it, then call again with the result
+        if msg.tool_calls:
+            messages.append(msg)
+            for tool_call in msg.tool_calls:
+                if tool_call.function.name == "search_web":
+                    args = json.loads(tool_call.function.arguments)
+                    result = search_web(args["query"])
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result
+                    })
 
-    # If the model wants to search, do it, then call again with the result
-    if msg.tool_calls:
-        messages.append(msg)
-        for tool_call in msg.tool_calls:
-            if tool_call.function.name == "search_web":
-                args = json.loads(tool_call.function.arguments)
-                result = search_web(args["query"])
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": result
-                })
+            try:
+                final = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=messages
+                )
+                reply = final.choices[0].message.content
+            except Exception:
+                reply = "מצאתי כמה תוצאות אבל הייתה לי בעיה לעבד אותן. אפשר לנסח את השאלה קצת אחרת?"
+        else:
+            reply = msg.content
 
-        # Second call — model now answers using search results
-        final = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages
-        )
-        reply = final.choices[0].message.content
-    else:
-        reply = msg.content
+    except Exception as e:
+        print(f"ERROR: {e}")
+        reply = "סליחה, הייתה לי תקלה רגעית. אפשר לנסות שוב?"
 
     conversations[from_number].append({"role": "assistant", "content": reply})
 
