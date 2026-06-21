@@ -1,4 +1,5 @@
 flask
 twilio
 groq
+tavily-python
 gunicorn
